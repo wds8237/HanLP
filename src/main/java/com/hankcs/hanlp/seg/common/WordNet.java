@@ -11,16 +11,18 @@
  */
 package com.hankcs.hanlp.seg.common;
 
+import com.hankcs.hanlp.utility.MathUtility;
 import com.hankcs.hanlp.dictionary.CoreDictionary;
+import com.hankcs.hanlp.dictionary.other.CharType;
 import com.hankcs.hanlp.corpus.tag.Nature;
 import com.hankcs.hanlp.seg.NShort.Path.AtomNode;
-import com.hankcs.hanlp.utility.MathTools;
 import com.hankcs.hanlp.utility.Predefine;
 
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.ListIterator;
+
 import static com.hankcs.hanlp.utility.Predefine.logger;
 
 /**
@@ -145,46 +147,28 @@ public class WordNet
         }
         vertexes[line].add(vertex);
         ++size;
-        // 保证连接
+        // 保证这个词语前面直连
         for (int l = line - 1; l > 1; --l)
         {
-            if (get(l, 1) == null)
+            LinkedList<Vertex> all = wordNetAll.get(l);
+            if (all == vertexes[l])
+                continue;
+            for (Vertex pre : all)
             {
-                Vertex first = wordNetAll.getFirst(l);
-                if (first == null) break;
-                vertexes[l].add(first);
-                ++size;
-                if (vertexes[l].size() > 1) break;
-            }
-            else
-            {
-                break;
+                if (pre.length() + l == line)
+                {
+                    vertexes[l].add(pre);
+                    ++size;
+                }
             }
         }
-        // 首先保证这个词语可直达
+        // 保证这个词语后面直连
         int l = line + vertex.realWord.length();
-        if (get(l).size() == 0)
+        LinkedList<Vertex> targetLine = wordNetAll.get(l);
+        if (vertexes[l].size() < targetLine.size())
         {
-            List<Vertex> targetLine = wordNetAll.get(l);
-            if (targetLine == null || targetLine.size() == 0) return;
-            vertexes[l].addAll(targetLine);
-            size += targetLine.size();
-        }
-        // 直达之后一直往后
-        for (++l; l < vertexes.length; ++l)
-        {
-            if (get(l).size() == 0)
-            {
-                Vertex first = wordNetAll.getFirst(l);
-                if (first == null) break;
-                vertexes[l].add(first);
-                ++size;
-                if (vertexes[l].size() > 1) break;
-            }
-            else
-            {
-                break;
-            }
+            size += (targetLine.size() - vertexes[l].size());
+            vertexes[l] = targetLine;
         }
     }
 
@@ -209,9 +193,19 @@ public class WordNet
      * @param line 行号
      * @return 一个数组
      */
-    public List<Vertex> get(int line)
+    public LinkedList<Vertex> get(int line)
     {
         return vertexes[line];
+    }
+
+    /**
+     * 获取某一行的逆序迭代器
+     * @param line 行号
+     * @return 逆序迭代器
+     */
+    public Iterator<Vertex> descendingIterator(int line)
+    {
+        return vertexes[line].descendingIterator();
     }
 
     /**
@@ -265,21 +259,22 @@ public class WordNet
             int id = -1;
             switch (atomNode.nPOS)
             {
-                case Predefine.CT_CHINESE:
+                case CharType.CT_CHINESE:
                     break;
-                case Predefine.CT_INDEX:
-                case Predefine.CT_NUM:
+                case CharType.CT_NUM:
+                case CharType.CT_INDEX:
+                case CharType.CT_CNUM:
                     nature = Nature.m;
-                    sWord = "未##数";
+                    sWord = Predefine.TAG_NUMBER;
                     id = CoreDictionary.M_WORD_ID;
                     break;
-                case Predefine.CT_DELIMITER:
-                case Predefine.CT_OTHER:
+                case CharType.CT_DELIMITER:
+                case CharType.CT_OTHER:
                     nature = Nature.w;
                     break;
-                case Predefine.CT_SINGLE://12021-2129-3121
+                case CharType.CT_SINGLE://12021-2129-3121
                     nature = Nature.nx;
-                    sWord = "未##串";
+                    sWord = Predefine.TAG_CLUSTER;
                     id = CoreDictionary.X_WORD_ID;
                     break;
                 default:
@@ -335,7 +330,7 @@ public class WordNet
                 int toIndex = row + from.realWord.length();
                 for (Vertex to : vertexes[toIndex])
                 {
-                    graph.connect(from.index, to.index, MathTools.calculateWeight(from, to));
+                    graph.connect(from.index, to.index, MathUtility.calculateWeight(from, to));
                 }
             }
         }
@@ -401,6 +396,20 @@ public class WordNet
             vertexList.clear();
         }
         size = 0;
+    }
+
+    /**
+     * 清理from属性
+     */
+    public void clean()
+    {
+        for (List<Vertex> vertexList : vertexes)
+        {
+            for (Vertex vertex : vertexList)
+            {
+                vertex.from = null;
+            }
+        }
     }
 
     /**
